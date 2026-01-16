@@ -6,7 +6,22 @@ import { eq } from 'drizzle-orm';
 import { redis } from '$lib/server/redis';
 import { getSessionKey } from '$lib/server/games/mines';
 import { validateBetAmount } from '$lib/utils';
+import { randomBytes } from 'crypto';
 import type { RequestHandler } from './$types';
+
+// Fisher-Yates shuffle with crypto randomness for mine positions
+function generateMinePositions(mineCount: number): number[] {
+    const tiles = Array.from({ length: 25 }, (_, i) => i);
+    const bytes = randomBytes(25);
+    
+    // Fisher-Yates shuffle using crypto random bytes
+    for (let i = tiles.length - 1; i > 0; i--) {
+        const j = bytes[i] % (i + 1);
+        [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+    }
+    
+    return tiles.slice(0, mineCount);
+}
 
 export const POST: RequestHandler = async ({ request }) => {
     const session = await auth.api.getSession({
@@ -42,36 +57,28 @@ export const POST: RequestHandler = async ({ request }) => {
                 throw new Error(`Insufficient funds. You need $${roundedBet.toFixed(2)} but only have $${roundedBalance.toFixed(2)}`);
             }
 
-            // Generate mine positions
-            const positions = new Set<number>();
-            while (positions.size < mineCount) {
-                positions.add(Math.floor(Math.random() * 25));
-            }
+            // Generate mine positions with crypto randomness
+            const minePositions = generateMinePositions(mineCount);
 
-            // transaction token for authentication stuff
-            const randomBytes = new Uint8Array(8);
-            crypto.getRandomValues(randomBytes);
-            const sessionToken = Array.from(randomBytes)
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('');
-
+            // Generate session token with crypto
+            const sessionToken = randomBytes(16).toString('hex');
             const now = Date.now();
             const newBalance = roundedBalance - roundedBet;
 
+            // Store game state in Redis with 1 hour expiry
             await redis.set(
                 getSessionKey(sessionToken),
                 JSON.stringify({
-                    sessionToken,
                     betAmount: roundedBet,
                     mineCount,
-                    minePositions: Array.from(positions),
+                    minePositions,
                     revealedTiles: [],
                     startTime: now,
-                    lastActivity: now,
                     currentMultiplier: 1,
                     status: 'active',
                     userId
-                })
+                }),
+                { EX: 3600 }
             );
 
             // Update user balance
@@ -83,10 +90,7 @@ export const POST: RequestHandler = async ({ request }) => {
                 })
                 .where(eq(user.id, userId));
 
-            return {
-                sessionToken,
-                newBalance
-            };
+            return { sessionToken, newBalance };
         });
 
         return json(result);

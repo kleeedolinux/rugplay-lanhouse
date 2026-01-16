@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { redis } from '$lib/server/redis';
 import { getSessionKey } from '$lib/server/games/mines';
 import { publishGamblingActivity } from '$lib/server/gambling-activity';
+import { storeEndedGamePositions } from '../pos/+server';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -17,26 +18,32 @@ export const POST: RequestHandler = async ({ request }) => {
         throw error(401, 'Not authenticated');
     }
 
+    const userId = Number(session.user.id);
+
     try {
         const { sessionToken } = await request.json();
-        const userId = Number(session.user.id);
+        const sessionKey = getSessionKey(sessionToken);
+        const sessionRaw = await redis.get(sessionKey);
 
-        const sessionRaw = await redis.get(getSessionKey(sessionToken));
-        const game = sessionRaw ? JSON.parse(sessionRaw) : null;
-
-        if (!game) {
+        if (!sessionRaw) {
             return json({ error: 'Invalid session' }, { status: 400 });
         }
 
+        const game = JSON.parse(sessionRaw);
+
         if (game.userId !== userId) {
-            return json({ error: 'Unauthorized: Session belongs to another user' }, { status: 403 });
+            return json({ error: 'Unauthorized' }, { status: 403 });
         }
 
-        const deleted = await redis.del(getSessionKey(sessionToken));
-
+        const deleted = await redis.del(sessionKey);
         if (!deleted) {
             return json({ error: 'Session already processed' }, { status: 400 });
         }
+
+        const isAbort = game.revealedTiles.length === 0;
+        const payout = isAbort ? game.betAmount : Math.round(game.betAmount * game.currentMultiplier * 100000000) / 100000000;
+        const netResult = payout - game.betAmount;
+        const isWin = netResult > 0;
 
         const result = await db.transaction(async (tx) => {
             const [userData] = await tx
@@ -51,53 +58,39 @@ export const POST: RequestHandler = async ({ request }) => {
                 .limit(1);
 
             const currentBalance = Number(userData.baseCurrencyBalance);
-            let payout: number;
-            let newBalance: number;
+            const newBalance = Math.round((currentBalance + payout) * 100000000) / 100000000;
 
-            // If no tiles revealed, treat as abort and return full bet.
-            if (game.revealedTiles.length === 0) {
-                payout = game.betAmount;
-                newBalance = Math.round((currentBalance + payout) * 100000000) / 100000000;
-            } else {
-                payout = game.betAmount * game.currentMultiplier;
-                const roundedPayout = Math.round(payout * 100000000) / 100000000;
-                newBalance = Math.round((currentBalance + roundedPayout) * 100000000) / 100000000;
-            }
-
-            // Calculate gambling stats
-            const netResult = payout - game.betAmount;
-            const isWin = netResult > 0;
-
-            const updateData: any = {
+            const updateData: Record<string, string | Date> = {
                 baseCurrencyBalance: newBalance.toFixed(8),
                 updatedAt: new Date()
             };
 
             if (isWin) {
-                updateData.gamblingWins = `${Number(userData.gamblingWins || 0) + netResult}`;
+                updateData.gamblingWins = (Number(userData.gamblingWins || 0) + netResult).toFixed(8);
             } else if (netResult < 0) {
-                updateData.gamblingLosses = `${Number(userData.gamblingLosses || 0) + Math.abs(netResult)}`;
+                updateData.gamblingLosses = (Number(userData.gamblingLosses || 0) + Math.abs(netResult)).toFixed(8);
             }
 
-            await tx
-                .update(user)
-                .set(updateData)
-                .where(eq(user.id, userId));
+            await tx.update(user).set(updateData).where(eq(user.id, userId));
 
-
-            return {
-                newBalance,
-                payout,
-                amountWagered: game.betAmount,
-                isAbort: game.revealedTiles.length === 0,
-                minePositions: game.minePositions
-            };
+            return { newBalance };
         });
 
-        const won = !result.isAbort && result.payout > result.amountWagered;
-        await publishGamblingActivity(userId, won ? result.payout : result.amountWagered, won, 'mines', 1000);
+        // Store ended game positions for pos endpoint
+        await storeEndedGamePositions(sessionToken, game.minePositions, userId, 'cashout');
 
-        return json(result);
+        // Only publish activity if not an abort and bet is significant
+        if (!isAbort) {
+            await publishGamblingActivity(userId, isWin ? payout : game.betAmount, isWin, 'mines', 500);
+        }
+
+        return json({
+            newBalance: result.newBalance,
+            payout,
+            amountWagered: game.betAmount,
+            isAbort,
+            minePositions: game.minePositions
+        });
     } catch (e) {
         console.error('Mines cashout error:', e);
         const errorMessage = e instanceof Error ? e.message : 'Internal server error';

@@ -47,6 +47,9 @@
 	let isAutoCashout = $state(false);
 	let lastClickedTile = $state<number | null>(null);
 	let clickedSafeTiles = $state<number[]>([]);
+	let isRevealingAll = $state(false);
+	let revealedAllTiles = $state<number[]>([]);
+	let gameEnded = $state(false);
 
 	let canBet = $derived(
 		betAmount > 0 && betAmount <= balance && betAmount <= MAX_BET_AMOUNT && !isPlaying
@@ -86,6 +89,27 @@
 		autoCashoutProgress = 0;
 	}
 
+	async function revealAllTilesAnimation(positions: number[]) {
+		isRevealingAll = true;
+		revealedAllTiles = [...revealedTiles];
+		
+		// Get tiles that haven't been revealed yet
+		const unrevealedTiles = Array.from({ length: TOTAL_TILES }, (_, i) => i)
+			.filter(i => !revealedTiles.includes(i));
+		
+		// Shuffle for random reveal order
+		const shuffled = unrevealedTiles.sort(() => Math.random() - 0.5);
+		
+		// Reveal tiles one by one with animation
+		for (const tileIndex of shuffled) {
+			await new Promise(resolve => setTimeout(resolve, 50));
+			revealedAllTiles = [...revealedAllTiles, tileIndex];
+			playSound('click');
+		}
+		
+		isRevealingAll = false;
+	}
+
 	function startAutoCashoutTimer() {
 		if (!hasRevealedTile) return;
 		resetAutoCashoutTimer();
@@ -122,9 +146,12 @@
 				revealedTiles = [...revealedTiles, index];
 				minePositions = result.minePositions;
 				isPlaying = false;
+				gameEnded = true;
 				resetAutoCashoutTimer();
 				balance = result.newBalance;
 				onBalanceUpdate?.(result.newBalance);
+				// Animate revealing all tiles
+				await revealAllTilesAnimation(result.minePositions);
 			} else {
 				playSound('flip');
 				revealedTiles = [...revealedTiles, index];
@@ -171,7 +198,15 @@
 			hasRevealedTile = false;
 			isAutoCashout = false;
 			resetAutoCashoutTimer();
-			minePositions = [];
+			
+			// Show all mine positions after cashout (not on abort)
+			if (!result.isAbort && result.minePositions) {
+				minePositions = result.minePositions;
+				gameEnded = true;
+				await revealAllTilesAnimation(result.minePositions);
+			} else {
+				minePositions = [];
+			}
 		} catch (error) {
 			console.error('Cashout error:', error);
 			toast.error('Failed to cash out', {
@@ -202,9 +237,11 @@
 			hasRevealedTile = false;
 			revealedTiles = [];
 			clickedSafeTiles = [];
+			revealedAllTiles = [];
 			currentMultiplier = 1;
 			sessionToken = result.sessionToken;
 			minePositions = [];
+			gameEnded = false;
 		} catch (error) {
 			console.error('Start game error:', error);
 			toast.error('Failed to start game', {
@@ -249,30 +286,28 @@
 				<!-- Mines Grid -->
 				<div class="mines-grid" class:pulse-warning={isPlaying && autoCashoutTimer >= 7}>
 					{#each Array(TOTAL_TILES) as _, index}
+						{@const isRevealed = revealedTiles.includes(index) || revealedAllTiles.includes(index)}
+						{@const isMine = minePositions.includes(index)}
+						{@const wasClickedSafe = clickedSafeTiles.includes(index)}
+						{@const isAnimatingReveal = revealedAllTiles.includes(index) && !revealedTiles.includes(index)}
 						<ModeWatcher />
 						<button
 							class="mine-tile"
 							onclick={() => handleTileClick(index)}
-							disabled={!isPlaying}
-							class:revealed={revealedTiles.includes(index)}
-							class:mine={revealedTiles.includes(index) &&
-								minePositions.includes(index) &&
-								!clickedSafeTiles.includes(index)}
-							class:safe={revealedTiles.includes(index) &&
-								!minePositions.includes(index) &&
-								clickedSafeTiles.includes(index)}
+							disabled={!isPlaying || isRevealingAll || gameEnded}
+							class:revealed={isRevealed}
+							class:mine={isRevealed && isMine}
+							class:safe={isRevealed && !isMine && wasClickedSafe}
+							class:safe-unrevealed={isRevealed && !isMine && !wasClickedSafe}
+							class:animate-reveal={isAnimatingReveal}
 							class:light={document.documentElement.classList.contains('light')}
 							aria-label="Tile"
 						>
-							{#if revealedTiles.includes(index)}
-								{#if minePositions.includes(index)}
-									<img src="/facedev/avif/bussin.avif" alt="Mine" class="h-8 w-8 object-contain" />
+							{#if isRevealed}
+								{#if isMine}
+									<img src="/facedev/avif/bussin.avif" alt="Mine" class="tile-icon" />
 								{:else}
-									<img
-										src="/facedev/avif/twoblade.avif"
-										alt="Safe"
-										class="h-8 w-8 object-contain"
-									/>
+									<img src="/facedev/avif/twoblade.avif" alt="Safe" class="tile-icon" />
 								{/if}
 							{/if}
 						</button>
@@ -519,6 +554,37 @@
 	.mine-tile.safe {
 		background-color: rgba(34, 197, 94, 0.2);
 		border: 2px solid rgb(34, 197, 94);
+	}
+
+	.mine-tile.safe-unrevealed {
+		background-color: rgba(100, 100, 100, 0.15);
+		border: 1px solid rgba(100, 100, 100, 0.3);
+	}
+
+	.mine-tile.animate-reveal {
+		animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	}
+
+	@keyframes popIn {
+		0% {
+			transform: scale(0.8) rotateY(180deg);
+			opacity: 0.5;
+		}
+		50% {
+			transform: scale(1.1) rotateY(180deg);
+		}
+		100% {
+			transform: scale(1) rotateY(180deg);
+			opacity: 1;
+		}
+	}
+
+	.tile-icon {
+		backface-visibility: hidden;
+		transform: rotateY(180deg);
+		width: 32px;
+		height: 32px;
+		object-fit: contain;
 	}
 
 	.mine-tile img {

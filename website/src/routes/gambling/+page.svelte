@@ -2,6 +2,7 @@
 	import Coinflip from '$lib/components/self/games/Coinflip.svelte';
 	import Slots from '$lib/components/self/games/Slots.svelte';
 	import Mines from '$lib/components/self/games/Mines.svelte';
+	import Cartela from '$lib/components/self/games/Cartela.svelte';
 	import { USER_DATA } from '$lib/stores/user-data';
 	import { PORTFOLIO_SUMMARY, fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 	import { onMount } from 'svelte';
@@ -73,7 +74,7 @@
 	{:else}
 		<div class="mx-auto max-w-4xl space-y-6">
 			<!-- Game Selection -->
-			<div class="flex justify-center gap-4">
+			<div class="flex flex-wrap justify-center gap-2 sm:gap-4">
 				<Button
 					variant={activeGame === 'coinflip' ? 'default' : 'outline'}
 					onclick={() => (activeGame = 'coinflip')}
@@ -98,6 +99,12 @@
 				>
 					Dice
 				</Button>
+				<Button
+					variant={activeGame === 'cartela' ? 'default' : 'outline'}
+					onclick={() => (activeGame = 'cartela')}
+				>
+					Cartela
+				</Button>
 			</div>
 
 			<!-- Game Content -->
@@ -109,6 +116,8 @@
 				<Mines bind:balance onBalanceUpdate={handleBalanceUpdate} />
 			{:else if activeGame === 'dice'}
 				<Dice bind:balance onBalanceUpdate={handleBalanceUpdate} />
+			{:else if activeGame === 'cartela'}
+				<Cartela bind:balance onBalanceUpdate={handleBalanceUpdate} />
 			{/if}
 
 			<!-- Live Gambling Activity Feed -->
