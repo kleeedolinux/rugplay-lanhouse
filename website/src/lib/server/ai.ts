@@ -2,13 +2,9 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { db } from './db';
 import { coin, user, transaction, priceHistory } from './db/schema';
 import { eq, desc, sql, gte } from 'drizzle-orm';
-import { GOOGLE_AI_API_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 
-if (!GOOGLE_AI_API_KEY) {
-    throw new Error('GOOGLE_AI_API_KEY não está configurada – recursos de IA estão desabilitados.');
-}
-
-const genAI = new GoogleGenerativeAI(GOOGLE_AI_API_KEY);
+const genAI = env.GOOGLE_AI_API_KEY ? new GoogleGenerativeAI(env.GOOGLE_AI_API_KEY) : null;
 
 const MODELS = {
     STANDARD: 'gemini-2.0-flash-lite',
@@ -212,7 +208,7 @@ function extractCoinSymbols(text: string): string[] {
 }
 
 export async function validateQuestion(question: string, description?: string): Promise<QuestionValidationResult> {
-    if (!GOOGLE_AI_API_KEY) {
+    if (!genAI) {
         return {
             isValid: false,
             requiresWebSearch: false,
@@ -284,7 +280,7 @@ Forneça sua resposta no formato JSON especificado com uma string datetime ISO 8
 `;
 
     try {
-        const model = genAI.getGenerativeModel({
+        const model = genAI!.getGenerativeModel({
             model: MODELS.STANDARD,
             generationConfig: {
                 temperature: 0.1,
@@ -322,7 +318,7 @@ export async function resolveQuestion(
     requiresWebSearch: boolean,
     customRugplayData?: string
 ): Promise<QuestionResolutionResult> {
-    if (!GOOGLE_AI_API_KEY) {
+    if (!genAI) {
         return {
             resolution: false,
             confidence: 0,
@@ -365,7 +361,7 @@ Forneça sua resposta no formato JSON especificado.
 `;
 
     try {
-        const model = genAI.getGenerativeModel({
+        const model = genAI!.getGenerativeModel({
             model: modelName,
             generationConfig: {
                 temperature: 0.1,
