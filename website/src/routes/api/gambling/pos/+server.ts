@@ -20,17 +20,16 @@ export const POST: RequestHandler = async ({ request }) => {
     const sessionRaw = await redis.get(getSessionKey(sessionToken));
     const game = sessionRaw ? JSON.parse(sessionRaw) : null;
 
-    if (!game) {
-      return json({ error: 'Invalid session' }, { status: 400 });
+    // If session still exists, game is still active - don't reveal positions
+    if (game) {
+      if (game.userId !== userId) {
+        return json({ error: 'Unauthorized: Session belongs to another user' }, { status: 403 });
+      }
+      
+      return json({ error: 'Game is still active. Positions are only revealed after losing or cashing out.' }, { status: 400 });
     }
 
-    if (game.userId !== userId) {
-      return json({ error: 'Unauthorized: Session belongs to another user' }, { status: 403 });
-    }
-
-    return json({
-      minePositions: game.minePositions
-    });
+    return json({ error: 'Game session has ended. Mine positions were revealed in the game result.' }, { status: 400 });
 
   } catch (e) {
     console.error('Mines positions error:', e);
