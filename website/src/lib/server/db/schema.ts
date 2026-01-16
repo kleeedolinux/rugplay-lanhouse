@@ -27,6 +27,7 @@ export const user = pgTable("user", {
 	volumeMuted: boolean("volume_muted").notNull().default(false),
 
 	lastRewardClaim: timestamp("last_reward_claim", { withTimezone: true }),
+	lastHourlyRewardClaim: timestamp("last_hourly_reward_claim", { withTimezone: true }),
 	totalRewardsClaimed: decimal("total_rewards_claimed", {
 		precision: 20,
 		scale: 8,

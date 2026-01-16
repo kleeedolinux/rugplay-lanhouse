@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import { Gift, Clock, Loader2, CheckIcon, Star } from 'lucide-svelte';
+	import { Gift, Clock, Loader2, CheckIcon, Zap } from 'lucide-svelte';
 	import { USER_DATA } from '$lib/stores/user-data';
 	import { fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 	import { toast } from 'svelte-sonner';
@@ -8,6 +8,7 @@
 	import { formatTimeRemaining } from '$lib/utils';
 
 	interface RewardStatus {
+		// Daily
 		canClaim: boolean;
 		rewardAmount: number;
 		baseReward: number;
@@ -15,24 +16,32 @@
 		prestigeLevel?: number;
 		timeRemaining: number;
 		nextClaimTime: string | null;
+		// Hourly
+		canClaimHourly: boolean;
+		hourlyRewardAmount: number;
+		hourlyBaseReward: number;
+		hourlyPrestigeBonus?: number;
+		hourlyTimeRemaining: number;
+		nextHourlyClaimTime: string | null;
+		// Common
 		totalRewardsClaimed: number;
 		lastRewardClaim: string | null;
+		lastHourlyRewardClaim: string | null;
 		loginStreak: number;
 	}
 
 	type ClaimState = 'idle' | 'loading' | 'success';
 
 	let rewardStatus = $state<RewardStatus | null>(null);
-	let claimState = $state<ClaimState>('idle');
+	let dailyClaimState = $state<ClaimState>('idle');
+	let hourlyClaimState = $state<ClaimState>('idle');
 	let error = $state<string | null>(null);
 
 	$effect(() => {
 		if ($USER_DATA) {
 			fetchRewardStatus();
 			const interval = setInterval(() => {
-				if (rewardStatus && !rewardStatus.canClaim) {
-					fetchRewardStatus();
-				}
+				fetchRewardStatus();
 			}, 60000);
 
 			return () => clearInterval(interval);
@@ -54,10 +63,10 @@
 		}
 	}
 
-	async function claimReward() {
-		if (!rewardStatus?.canClaim || claimState === 'loading') return;
+	async function claimDailyReward() {
+		if (!rewardStatus?.canClaim || dailyClaimState === 'loading') return;
 
-		claimState = 'loading';
+		dailyClaimState = 'loading';
 		error = null;
 
 		try {
@@ -67,16 +76,16 @@
 
 			if (response.ok) {
 				const result = await response.json();
-				claimState = 'success';
+				dailyClaimState = 'success';
 
 				const prestigeBonus = result.prestigeBonus || 0;
 				const hasPrestigeBonus = prestigeBonus > 0;
 
 				toast.success(`Daily reward claimed! +$${formatCurrency(result.rewardAmount)}`, {
 					description: hasPrestigeBonus 
-						? `Base: $${formatCurrency(result.baseReward)} + Prestige bonus: $${formatCurrency(prestigeBonus)} | Streak: ${rewardStatus.loginStreak} days 🔥`
-						: rewardStatus.loginStreak > 0
-							? `Login streak: ${rewardStatus.loginStreak} days 🔥`
+						? `Base: $${formatCurrency(result.baseReward)} + Prestige bonus: $${formatCurrency(prestigeBonus)} | Streak: ${result.loginStreak} days 🔥`
+						: result.loginStreak > 0
+							? `Login streak: ${result.loginStreak} days 🔥`
 							: undefined,
 					action: {
 						label: 'View Portfolio',
@@ -93,7 +102,7 @@
 				await fetchRewardStatus();
 
 				setTimeout(() => {
-					claimState = 'idle';
+					dailyClaimState = 'idle';
 				}, 1000);
 			} else {
 				const errorData = await response.json();
@@ -104,13 +113,8 @@
 					const minutes = Math.floor((errorData.timeRemaining % (60 * 60 * 1000)) / (60 * 1000));
 					const timeText = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
-					const streakDescription =
-						rewardStatus?.loginStreak > 0
-							? `Login streak: ${rewardStatus.loginStreak} days 🔥. Next reward available in ${timeText}. Come back later!`
-							: `Next reward available in ${timeText}. Come back later!`;
-
 					toast.info('Daily reward on cooldown', {
-						description: streakDescription
+						description: `Next reward available in ${timeText}`
 					});
 				} else {
 					error = errorData.error || errorData.message || 'Failed to claim reward';
@@ -124,8 +128,77 @@
 			});
 			console.error('Error claiming reward:', err);
 		} finally {
-			if (claimState !== 'success') {
-				claimState = 'idle';
+			if (dailyClaimState !== 'success') {
+				dailyClaimState = 'idle';
+			}
+		}
+	}
+
+	async function claimHourlyReward() {
+		if (!rewardStatus?.canClaimHourly || hourlyClaimState === 'loading') return;
+
+		hourlyClaimState = 'loading';
+		error = null;
+
+		try {
+			const response = await fetch('/api/rewards/hourly', {
+				method: 'POST'
+			});
+
+			if (response.ok) {
+				const result = await response.json();
+				hourlyClaimState = 'success';
+
+				const prestigeBonus = result.prestigeBonus || 0;
+				const hasPrestigeBonus = prestigeBonus > 0;
+
+				toast.success(`Hourly reward claimed! +$${formatCurrency(result.rewardAmount)}`, {
+					description: hasPrestigeBonus 
+						? `Base: $${formatCurrency(result.baseReward)} + Prestige: $${formatCurrency(prestigeBonus)}`
+						: undefined,
+					action: {
+						label: 'View Portfolio',
+						onClick: () => {
+							goto('/portfolio');
+						}
+					}
+				});
+
+				if ($USER_DATA) {
+					await fetchPortfolioSummary();
+				}
+
+				await fetchRewardStatus();
+
+				setTimeout(() => {
+					hourlyClaimState = 'idle';
+				}, 1000);
+			} else {
+				const errorData = await response.json();
+				if (response.status === 429 && errorData.timeRemaining) {
+					await fetchRewardStatus();
+
+					const minutes = Math.floor(errorData.timeRemaining / (60 * 1000));
+					const seconds = Math.floor((errorData.timeRemaining % (60 * 1000)) / 1000);
+					const timeText = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+
+					toast.info('Hourly reward on cooldown', {
+						description: `Next reward available in ${timeText}`
+					});
+				} else {
+					error = errorData.error || errorData.message || 'Failed to claim reward';
+					toast.error('Failed to claim hourly reward');
+				}
+			}
+		} catch (err) {
+			error = 'Network error';
+			toast.error('Network error', {
+				description: 'Please check your connection and try again.'
+			});
+			console.error('Error claiming hourly reward:', err);
+		} finally {
+			if (hourlyClaimState !== 'success') {
+				hourlyClaimState = 'idle';
 			}
 		}
 	}
@@ -138,24 +211,50 @@
 	}
 </script>
 
-<Button
-	onclick={claimReward}
-	disabled={claimState === 'loading' || !rewardStatus?.canClaim}
-	class="w-full transition-all duration-300"
-	size="sm"
-	variant={claimState === 'success' ? 'secondary' : rewardStatus?.canClaim ? 'default' : 'outline'}
->
-	{#if !rewardStatus || claimState === 'loading'}
-		<Loader2 class="h-4 w-4 animate-spin" />
-		<span>{!rewardStatus ? 'Loading...' : 'Claiming...'}</span>
-	{:else if claimState === 'success'}
-		<CheckIcon class="h-4 w-4" />
-		<span>Claimed!</span>
-	{:else if rewardStatus.canClaim}
-		<Gift class="h-4 w-4" />
-		<span>Claim ${formatCurrency(rewardStatus.rewardAmount)}</span>
-	{:else}
-		<Clock class="h-4 w-4" />
-		<span>Next in {formatTimeRemaining(rewardStatus.timeRemaining)}</span>
-	{/if}
-</Button>
+<div class="flex flex-col gap-1.5">
+	<!-- Daily Reward Button -->
+	<Button
+		onclick={claimDailyReward}
+		disabled={dailyClaimState === 'loading' || !rewardStatus?.canClaim}
+		class="w-full transition-all duration-300"
+		size="sm"
+		variant={dailyClaimState === 'success' ? 'secondary' : rewardStatus?.canClaim ? 'default' : 'outline'}
+	>
+		{#if !rewardStatus || dailyClaimState === 'loading'}
+			<Loader2 class="h-4 w-4 animate-spin" />
+			<span>{!rewardStatus ? 'Loading...' : 'Claiming...'}</span>
+		{:else if dailyClaimState === 'success'}
+			<CheckIcon class="h-4 w-4" />
+			<span>Claimed!</span>
+		{:else if rewardStatus.canClaim}
+			<Gift class="h-4 w-4" />
+			<span>Daily ${formatCurrency(rewardStatus.rewardAmount)}</span>
+		{:else}
+			<Clock class="h-4 w-4" />
+			<span>Daily: {formatTimeRemaining(rewardStatus.timeRemaining)}</span>
+		{/if}
+	</Button>
+
+	<!-- Hourly Reward Button -->
+	<Button
+		onclick={claimHourlyReward}
+		disabled={hourlyClaimState === 'loading' || !rewardStatus?.canClaimHourly}
+		class="w-full transition-all duration-300"
+		size="sm"
+		variant={hourlyClaimState === 'success' ? 'secondary' : rewardStatus?.canClaimHourly ? 'default' : 'outline'}
+	>
+		{#if !rewardStatus || hourlyClaimState === 'loading'}
+			<Loader2 class="h-4 w-4 animate-spin" />
+			<span>{!rewardStatus ? 'Loading...' : 'Claiming...'}</span>
+		{:else if hourlyClaimState === 'success'}
+			<CheckIcon class="h-4 w-4" />
+			<span>Claimed!</span>
+		{:else if rewardStatus.canClaimHourly}
+			<Zap class="h-4 w-4" />
+			<span>Hourly ${formatCurrency(rewardStatus.hourlyRewardAmount)}</span>
+		{:else}
+			<Clock class="h-4 w-4" />
+			<span>Hourly: {formatTimeRemaining(rewardStatus.hourlyTimeRemaining)}</span>
+		{/if}
+	</Button>
+</div>

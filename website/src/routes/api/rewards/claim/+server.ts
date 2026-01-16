@@ -4,79 +4,13 @@ import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
-
-const TWELVE_HOURS_MS = 12 * 60 * 60 * 1000;
-const THIRTY_SIX_HOURS_MS = 36 * 60 * 60 * 1000;
-
-const REWARD_TIERS = [
-    20000,  // Day 1
-    22000,  // Day 2
-    24000,  // Day 3
-    26000,  // Day 4
-    28000,  // Day 5
-    30000,  // Day 6
-    33000,  // Day 7
-    36000,  // Day 8
-    39000,  // Day 9
-    42000,  // Day 10
-    45000,  // Day 11
-    48000,  // Day 12
-    52000,  // Day 13
-    56000,  // Day 14
-    60000,  // Day 15
-    65000,  // Day 16
-    70000,  // Day 17
-    75000,  // Day 18
-    80000,  // Day 19
-    85000,  // Day 20
-    90000,  // Day 21
-    95000,  // Day 22
-    100000, // Day 23
-    105000, // Day 24
-    110000, // Day 25
-    115000, // Day 26
-    120000, // Day 27
-    125000, // Day 28
-    130000, // Day 29
-    150000  // Day 30+
-];
-
-const PRESTIGE_MULTIPLIERS = {
-    0: 1.0,    // No prestige
-    1: 1.25,   // 25% bonus
-    2: 1.5,    // 50% bonus
-    3: 1.75,   // 75% bonus
-    4: 2.0,    // 100% bonus
-    5: 2.5,    // 150% bonus
-};
-
-function getPrestigeMultiplier(prestigeLevel: number): number {
-    return PRESTIGE_MULTIPLIERS[prestigeLevel as keyof typeof PRESTIGE_MULTIPLIERS] || 1.0;
-}
-
-function calculateStreak(lastClaim: Date | null, currentStreak: number): number {
-    if (!lastClaim) return 1;
-
-    const timeSinceLastClaim = Date.now() - lastClaim.getTime();
-
-    // reset streak if more than 36 hours
-    if (timeSinceLastClaim > THIRTY_SIX_HOURS_MS) return 1;
-
-    // only increment if within valid window (12-36 hours)
-    if (timeSinceLastClaim >= TWELVE_HOURS_MS) return currentStreak + 1;
-
-    return currentStreak;
-}
-
-function calculateReward(streak: number, prestigeLevel: number = 0): { total: number; base: number; prestigeBonus: number } {
-    const tierIndex = Math.min(streak - 1, REWARD_TIERS.length - 1);
-    const base = REWARD_TIERS[tierIndex];
-    const prestigeMultiplier = getPrestigeMultiplier(prestigeLevel);
-    const prestigeBonus = base * (prestigeMultiplier - 1);
-    const total = base + prestigeBonus;
-
-    return { total, base, prestigeBonus };
-}
+import { 
+    TWELVE_HOURS_MS, 
+    ONE_HOUR_MS, 
+    calculateStreak, 
+    calculateDailyReward, 
+    calculateHourlyReward 
+} from '$lib/server/rewards';
 
 export const POST: RequestHandler = async ({ request }) => {
     const session = await auth.api.getSession({ headers: request.headers });
@@ -86,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const now = new Date();
 
     return await db.transaction(async (tx) => {
-        const userData = await tx.select({
+        const [currentUser] = await tx.select({
             id: user.id,
             baseCurrencyBalance: user.baseCurrencyBalance,
             lastRewardClaim: user.lastRewardClaim,
@@ -99,11 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
             .for('update')
             .limit(1);
 
-        if (!userData[0]) {
-            throw error(404, 'User not found');
-        }
-
-        const currentUser = userData[0];
+        if (!currentUser) throw error(404, 'User not found');
 
         if (currentUser.lastRewardClaim) {
             const timeSinceLastClaim = now.getTime() - currentUser.lastRewardClaim.getTime();
@@ -117,12 +47,10 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         const newStreak = calculateStreak(currentUser.lastRewardClaim, currentUser.loginStreak || 0);
-        const reward = calculateReward(newStreak, currentUser.prestigeLevel || 0);
+        const reward = calculateDailyReward(newStreak, currentUser.prestigeLevel || 0);
 
-        const currentBalance = parseFloat(currentUser.baseCurrencyBalance || '0');
-        const currentTotalRewards = parseFloat(currentUser.totalRewardsClaimed || '0');
-        const newBalance = currentBalance + reward.total;
-        const newTotalRewards = currentTotalRewards + reward.total;
+        const newBalance = parseFloat(currentUser.baseCurrencyBalance || '0') + reward.total;
+        const newTotalRewards = parseFloat(currentUser.totalRewardsClaimed || '0') + reward.total;
 
         await tx.update(user)
             .set({
@@ -153,8 +81,8 @@ export const GET: RequestHandler = async ({ request }) => {
 
     const [currentUser] = await db.select({
         id: user.id,
-        baseCurrencyBalance: user.baseCurrencyBalance,
         lastRewardClaim: user.lastRewardClaim,
+        lastHourlyRewardClaim: user.lastHourlyRewardClaim,
         totalRewardsClaimed: user.totalRewardsClaimed,
         loginStreak: user.loginStreak,
         prestigeLevel: user.prestigeLevel
@@ -163,38 +91,39 @@ export const GET: RequestHandler = async ({ request }) => {
         .where(eq(user.id, Number(session.user.id)))
         .limit(1);
 
-    if (!currentUser) {
-        throw error(404, 'User not found');
-    }
+    if (!currentUser) throw error(404, 'User not found');
 
-    const now = new Date();
+    const now = Date.now();
+    const lastDaily = currentUser.lastRewardClaim?.getTime() || 0;
+    const lastHourly = currentUser.lastHourlyRewardClaim?.getTime() || 0;
 
-    let canClaim = true;
-    let timeRemaining = 0;
-    let nextClaimTime = null;
-
-    if (currentUser.lastRewardClaim) {
-        const timeSinceLastClaim = now.getTime() - currentUser.lastRewardClaim.getTime();
-        if (timeSinceLastClaim < TWELVE_HOURS_MS) {
-            canClaim = false;
-            timeRemaining = TWELVE_HOURS_MS - timeSinceLastClaim;
-            nextClaimTime = new Date(currentUser.lastRewardClaim.getTime() + TWELVE_HOURS_MS);
-        }
-    }
+    const dailyTimeRemaining = Math.max(0, TWELVE_HOURS_MS - (now - lastDaily));
+    const hourlyTimeRemaining = Math.max(0, ONE_HOUR_MS - (now - lastHourly));
 
     const potentialStreak = calculateStreak(currentUser.lastRewardClaim, currentUser.loginStreak || 0);
-    const reward = calculateReward(potentialStreak, currentUser.prestigeLevel || 0);
+    const dailyReward = calculateDailyReward(potentialStreak, currentUser.prestigeLevel || 0);
+    const hourlyReward = calculateHourlyReward(Math.max(currentUser.loginStreak || 0, 1), currentUser.prestigeLevel || 0);
 
     return json({
-        canClaim,
-        rewardAmount: reward.total,
-        baseReward: reward.base,
-        prestigeBonus: reward.prestigeBonus,
+        // Daily
+        canClaim: dailyTimeRemaining === 0,
+        rewardAmount: dailyReward.total,
+        baseReward: dailyReward.base,
+        prestigeBonus: dailyReward.prestigeBonus,
+        timeRemaining: dailyTimeRemaining,
+        nextClaimTime: dailyTimeRemaining > 0 ? new Date(lastDaily + TWELVE_HOURS_MS) : null,
+        // Hourly
+        canClaimHourly: hourlyTimeRemaining === 0,
+        hourlyRewardAmount: hourlyReward.total,
+        hourlyBaseReward: hourlyReward.base,
+        hourlyPrestigeBonus: hourlyReward.prestigeBonus,
+        hourlyTimeRemaining,
+        nextHourlyClaimTime: hourlyTimeRemaining > 0 ? new Date(lastHourly + ONE_HOUR_MS) : null,
+        // Common
         prestigeLevel: currentUser.prestigeLevel || 0,
-        timeRemaining,
-        nextClaimTime,
         totalRewardsClaimed: Number(currentUser.totalRewardsClaimed || 0),
         lastRewardClaim: currentUser.lastRewardClaim,
+        lastHourlyRewardClaim: currentUser.lastHourlyRewardClaim,
         loginStreak: currentUser.loginStreak || 0
     });
 };

@@ -14,6 +14,7 @@
 		"db:push": "drizzle-kit push --force",
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
+		"db:reset-economy": "npx tsx scripts/reset-economy.ts",
 		"setup": "npm install --include=dev && npx svelte-kit sync && npm run db:push && npm run build",
 		"start": "node build",
 		"postinstall": "npx svelte-kit sync || true"
