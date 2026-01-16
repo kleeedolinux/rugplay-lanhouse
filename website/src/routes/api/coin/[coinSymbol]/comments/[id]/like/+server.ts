@@ -4,7 +4,7 @@ import { comment, commentLike, coin } from '$lib/server/db/schema';
 import { eq, and, sql } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { auth } from '$lib/auth';
-import { redis } from '$lib/server/redis';
+import { broadcastComment } from '$lib/server/websocket-api';
 
 export const POST: RequestHandler = async ({ request, params }) => {
 	const session = await auth.api.getSession({
@@ -60,18 +60,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
 			.from(comment)
 			.where(eq(comment.id, commentId));
 
-		await redis.publish(
-			`comments:${coinSymbol!.toUpperCase()}`,
-			JSON.stringify({
-				type: 'comment_liked',
-				data: {
-					commentId: Number(commentId),
-					likesCount: updatedComment.likesCount,
-					isLikedByUser: true,
-					userId
-				}
-			})
-		)
+		await broadcastComment(coinSymbol!.toUpperCase(), {
+			type: 'comment_liked',
+			data: {
+				commentId: Number(commentId),
+				likesCount: updatedComment.likesCount,
+				isLikedByUser: true,
+				userId
+			}
+		});
 
 		return json({ success: true });
 	} catch (error) {
@@ -136,18 +133,15 @@ export const DELETE: RequestHandler = async ({ request, params }) => {
 			.from(comment)
 			.where(eq(comment.id, commentId));
 
-		await redis.publish(
-			`comments:${coinSymbol.toUpperCase()}`,
-			JSON.stringify({
-				type: 'comment_liked',
-				data: {
-					commentId: Number(commentId),
-					likesCount: updatedComment.likesCount,
-					isLikedByUser: false,
-					userId
-				}
-			})
-		);
+		await broadcastComment(coinSymbol.toUpperCase(), {
+			type: 'comment_liked',
+			data: {
+				commentId: Number(commentId),
+				likesCount: updatedComment.likesCount,
+				isLikedByUser: false,
+				userId
+			}
+		});
 
 		return json({ success: true });
 	} catch (error) {

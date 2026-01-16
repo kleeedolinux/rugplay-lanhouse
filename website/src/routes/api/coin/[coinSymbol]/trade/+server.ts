@@ -3,7 +3,7 @@ import { error, json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { coin, userPortfolio, user, transaction, priceHistory } from '$lib/server/db/schema';
 import { eq, and, gte } from 'drizzle-orm';
-import { redis } from '$lib/server/redis';
+import { broadcastPrice, broadcastTrade } from '$lib/server/websocket-api';
 import { createNotification } from '$lib/server/notification';
 import { calculate24hMetrics, executeSellTrade } from '$lib/server/amm';
 
@@ -203,18 +203,18 @@ export async function POST({ params, request }) {
                 userId: userId.toString()
             };
 
-            await redis.publish(`prices:${normalizedSymbol}`, JSON.stringify(priceUpdateData));
+            await broadcastPrice(normalizedSymbol, priceUpdateData);
 
-            await redis.publish('trades:all', JSON.stringify({
+            await broadcastTrade({
                 type: 'all-trades',
                 data: tradeData
-            }));
+            }, false);
 
             if (totalCost >= 1000) {
-                await redis.publish('trades:large', JSON.stringify({
+                await broadcastTrade({
                     type: 'live-trade',
                     data: tradeData
-                }));
+                }, true);
             }
 
             return json({
@@ -313,18 +313,18 @@ export async function POST({ params, request }) {
                 userId: userId.toString()
             };
 
-            await redis.publish(`prices:${normalizedSymbol}`, JSON.stringify(priceUpdateData));
+            await broadcastPrice(normalizedSymbol, priceUpdateData);
 
-            await redis.publish('trades:all', JSON.stringify({
+            await broadcastTrade({
                 type: 'all-trades',
                 data: tradeData
-            }));
+            }, false);
 
             if (totalCost >= 1000) {
-                await redis.publish('trades:large', JSON.stringify({
+                await broadcastTrade({
                     type: 'live-trade',
                     data: tradeData
-                }));
+                }, true);
             }
 
             return json({

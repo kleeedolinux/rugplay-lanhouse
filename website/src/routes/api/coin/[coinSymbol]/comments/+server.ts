@@ -3,7 +3,7 @@ import { error, json } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { comment, coin, user, commentLike } from '$lib/server/db/schema';
 import { eq, and, desc, sql } from 'drizzle-orm';
-import { redis } from '$lib/server/redis';
+import { broadcastComment } from '$lib/server/websocket-api';
 import { isNameAppropriate } from '$lib/server/moderation';
 
 export async function GET({ params, request }) {
@@ -119,13 +119,10 @@ export async function POST({ request, params }) {
             .where(eq(comment.id, newComment.id))
             .limit(1);
 
-        await redis.publish(
-            `comments:${normalizedSymbol}`,
-            JSON.stringify({
-                type: 'new_comment',
-                data: commentWithUser
-            })
-        );
+        await broadcastComment(normalizedSymbol, {
+            type: 'new_comment',
+            data: commentWithUser
+        });
 
         return json({ comment: commentWithUser });
     } catch (e) {

@@ -4,9 +4,23 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-config({ path: join(__dirname, '../../.env') });
+config({ path: join(__dirname, '../../website/.env') });
 
 const HEARTBEAT_INTERVAL = 30_000;
+const WEBSOCKET_API_KEY = process.env.WEBSOCKET_API_KEY || '';
+
+// Validate API key for internal routes
+function validateApiKey(request: Request): boolean {
+	if (!WEBSOCKET_API_KEY) {
+		console.warn('WEBSOCKET_API_KEY not configured - API routes are disabled');
+		return false;
+	}
+	const authHeader = request.headers.get('Authorization');
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+		return false;
+	}
+	return authHeader.slice(7) === WEBSOCKET_API_KEY;
+}
 
 type WebSocketData = {
 	coinSymbol?: string;
@@ -223,9 +237,10 @@ setInterval(checkConnections, HEARTBEAT_INTERVAL);
 const server = Bun.serve<WebSocketData, undefined>({
 	port: Number(process.env.PORT) || 8080,
 
-	fetch(request, server) {
+	async fetch(request, server) {
 		const url = new URL(request.url);
 
+		// Health check endpoint
 		if (url.pathname === '/health') {
 			return new Response(JSON.stringify({
 				status: 'ok',
@@ -236,14 +251,104 @@ const server = Bun.serve<WebSocketData, undefined>({
 			});
 		}
 
+		// HTTP API endpoints for broadcasting (called from the website backend)
+		if (url.pathname.startsWith('/api/broadcast/')) {
+			if (request.method !== 'POST') {
+				return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+					status: 405,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			if (!validateApiKey(request)) {
+				return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+					status: 401,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+
+			try {
+				const body = await request.json();
+				const endpoint = url.pathname.replace('/api/broadcast/', '');
+
+				switch (endpoint) {
+					case 'gambling': {
+						publishGamblingActivity(body);
+						return new Response(JSON.stringify({ success: true }), {
+							headers: { 'Content-Type': 'application/json' }
+						});
+					}
+					case 'trade': {
+						const { data, isLarge } = body;
+						publishTrade(data, isLarge);
+						return new Response(JSON.stringify({ success: true }), {
+							headers: { 'Content-Type': 'application/json' }
+						});
+					}
+					case 'price': {
+						const { coinSymbol, data } = body;
+						if (coinSymbol) {
+							publishPrice(coinSymbol, data);
+						}
+						return new Response(JSON.stringify({ success: true }), {
+							headers: { 'Content-Type': 'application/json' }
+						});
+					}
+					case 'comment': {
+						const { coinSymbol, data } = body;
+						if (coinSymbol) {
+							publishComment(coinSymbol, data);
+						}
+						return new Response(JSON.stringify({ success: true }), {
+							headers: { 'Content-Type': 'application/json' }
+						});
+					}
+					case 'notification': {
+						const { userId, data } = body;
+						if (userId) {
+							publishNotification(userId, data);
+						}
+						return new Response(JSON.stringify({ success: true }), {
+							headers: { 'Content-Type': 'application/json' }
+						});
+					}
+					default:
+						return new Response(JSON.stringify({ error: 'Unknown endpoint' }), {
+							status: 404,
+							headers: { 'Content-Type': 'application/json' }
+						});
+				}
+			} catch (error) {
+				console.error('API broadcast error:', error);
+				return new Response(JSON.stringify({ error: 'Internal server error' }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json' }
+				});
+			}
+		}
+
+		// WebSocket upgrade - try to upgrade any other request
 		const upgraded = server.upgrade(request, {
 			data: {
 				coinSymbol: undefined,
+				userId: undefined,
 				lastActivity: Date.now()
 			}
 		});
 
-		return upgraded ? undefined : new Response('Upgrade failed', { status: 500 });
+		if (upgraded) {
+			// Bun automatically handles the response for successful upgrades
+			return undefined;
+		}
+
+		// If upgrade failed, return appropriate error
+		return new Response('WebSocket upgrade failed. Connect using ws:// or wss:// protocol.', { 
+			status: 426,
+			headers: { 
+				'Content-Type': 'text/plain',
+				'Upgrade': 'websocket'
+			}
+		});
 	},
 
 	websocket: {

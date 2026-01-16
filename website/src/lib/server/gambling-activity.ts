@@ -1,7 +1,7 @@
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
-import { redis } from '$lib/server/redis';
+import { broadcastGamblingActivity } from '$lib/server/websocket-api';
 
 export async function publishGamblingActivity(
 	userId: number,
@@ -38,7 +38,7 @@ export async function publishGamblingActivity(
 					}
 				};
 
-				await redis.publish('gambling:activity', JSON.stringify(activityData));
+				await broadcastGamblingActivity(activityData);
 			}
 		} catch (error) {
 			console.error('Failed to publish gambling activity:', error);

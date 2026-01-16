@@ -94,7 +94,7 @@ Before you begin, make sure you have the following installed:
    cp .env.example .env
    ```
 
-   Edit `.env` with your values. Example:
+   Set environment variables (via `.env` file or system environment). Example:
 
    ```ini
    # --- Database ---
@@ -102,9 +102,6 @@ Before you begin, make sure you have the following installed:
    POSTGRES_USER=pguser      # PostgreSQL username (should match Docker config)
    POSTGRES_PASSWORD=pgpass  # PostgreSQL password (should match Docker config)
    POSTGRES_DB=rugplay       # PostgreSQL database name (should match Docker config)
-
-   # --- Redis ---
-   REDIS_URL=redis://localhost:6379  # Redis connection string
 
    # --- Auth ---
    PRIVATE_BETTER_AUTH_SECRET=your_secret_here   # Any alphanumeric string for session encryption
@@ -116,6 +113,10 @@ Before you begin, make sure you have the following installed:
 
    # --- Websocket ---
    PUBLIC_WEBSOCKET_URL=ws://localhost:8080      # URL of the websocket server
+   WEBSOCKET_API_KEY=your_secret_api_key_here    # Shared key for website <-> websocket communication
+
+   # --- Optional: Redis (for caching) ---
+   REDIS_URL=redis://localhost:6379  # Redis connection string (optional - uses in-memory cache if not set)
 
    # --- Optional: AWS (for additional features) ---
    AWS_ACCESS_KEY_ID=your_aws_access_key
@@ -129,7 +130,8 @@ Before you begin, make sure you have the following installed:
    **Notes:**
    - For production, change `PUBLIC_BETTER_AUTH_URL` to `http://localhost:3002` or your deployed domain.
    - The `DATABASE_URL` should match your Postgres Docker container settings.
-   - The `REDIS_URL` should match your Redis Docker container settings.
+   - Redis is now optional - the app uses an in-memory cache if `REDIS_URL` is not configured.
+   - `WEBSOCKET_API_KEY` must be the same for both the website and websocket server.
    - AWS and OpenRouter variables are optional and only needed for advanced features.
 
 6. **Install Dependencies**

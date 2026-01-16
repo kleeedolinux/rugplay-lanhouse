@@ -1,6 +1,6 @@
 import { db } from './db';
 import { notifications, notificationTypeEnum } from './db/schema';
-import { redis } from './redis';
+import { broadcastNotification } from './websocket-api';
 
 export type NotificationType = typeof notificationTypeEnum.enumValues[number];
 
@@ -20,8 +20,6 @@ export async function createNotification(
     });
 
     try {
-        const channel = `notifications:${userId}`;
-
         const payload = {
             type: 'notification',
             timestamp: new Date().toISOString(),
@@ -32,8 +30,8 @@ export async function createNotification(
             link
         };
 
-        await redis.publish(channel, JSON.stringify(payload));
+        await broadcastNotification(userId, payload);
     } catch (error) {
-        console.error('Failed to send notification via Redis:', error);
+        console.error('Failed to send notification via WebSocket:', error);
     }
 }
