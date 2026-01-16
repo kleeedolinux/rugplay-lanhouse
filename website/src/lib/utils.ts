@@ -1,4 +1,3 @@
-import { PUBLIC_B2_BUCKET, PUBLIC_B2_ENDPOINT } from "$env/static/public";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { volumeSettings } from '$lib/stores/volume-settings';

@@ -1,21 +1,6 @@
-import { env as publicEnv } from "$env/dynamic/public";
-import { env } from "$env/dynamic/private";
 import { error } from '@sveltejs/kit';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-
-function isS3Configured(): boolean {
-	const PRIVATE_B2_KEY_ID = env.PRIVATE_B2_KEY_ID || '';
-	const PRIVATE_B2_APP_KEY = env.PRIVATE_B2_APP_KEY || '';
-	const PUBLIC_B2_BUCKET = publicEnv.PUBLIC_B2_BUCKET || '';
-	const PUBLIC_B2_ENDPOINT = publicEnv.PUBLIC_B2_ENDPOINT || '';
-	return Boolean(
-		PRIVATE_B2_KEY_ID && PRIVATE_B2_KEY_ID.trim() !== '' &&
-		PRIVATE_B2_APP_KEY && PRIVATE_B2_APP_KEY.trim() !== '' &&
-		PUBLIC_B2_BUCKET && PUBLIC_B2_BUCKET.trim() !== '' &&
-		PUBLIC_B2_ENDPOINT && PUBLIC_B2_ENDPOINT.trim() !== ''
-	);
-}
 
 export async function GET({ params, request }) {
     const path = params.path;
@@ -30,42 +15,6 @@ export async function GET({ params, request }) {
     }
 
     try {
-        // If S3 is configured, use S3
-        if (isS3Configured()) {
-            const PUBLIC_B2_ENDPOINT = publicEnv.PUBLIC_B2_ENDPOINT || '';
-            const PUBLIC_B2_BUCKET = publicEnv.PUBLIC_B2_BUCKET || '';
-            const s3Url = `${PUBLIC_B2_ENDPOINT}/${PUBLIC_B2_BUCKET}/${path}`;
-            const response = await fetch(s3Url);
-
-            if (!response.ok) {
-                throw error(response.status, 'Failed to fetch from S3');
-            }
-
-            const contentType = response.headers.get('content-type') || 'application/octet-stream';
-            const buffer = await response.arrayBuffer();
-
-            let cacheControl: string;
-            
-            if (path.includes('/coin/') || path.includes('coin-icon')) {
-                cacheControl = 'public, max-age=31536000, immutable';
-            } else if (path.includes('/avatars/') || path.includes('profile-') || path.includes('avatar')) {
-                cacheControl = 'public, max-age=60';
-            } else {
-                cacheControl = 'public, max-age=86400';
-            }
-
-            return new Response(buffer, {
-                headers: {
-                    'Content-Type': contentType,
-                    'Cache-Control': cacheControl,
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET',
-                    'Access-Control-Allow-Headers': 'Content-Type'
-                }
-            });
-        }
-
-        // Otherwise, use filesystem
         const uploadsDir = join(process.cwd(), 'uploads');
         const filePath = join(uploadsDir, path);
 
@@ -115,7 +64,7 @@ export async function GET({ params, request }) {
         if (e.status) {
             throw e;
         }
-        console.error('Proxy error:', e);
+        console.error('File proxy error:', e);
         throw error(500, 'Failed to serve file');
     }
 }

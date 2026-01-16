@@ -40,6 +40,55 @@ npm run build
 npm run preview
 ```
 
+### Deploying to PaaS (Platform as a Service)
+
+If you're deploying to a PaaS that only supports port 80 (like Railway, Render, Fly.io, etc.), configure your environment variables as follows:
+
+#### Environment Variables for PaaS
+
+```bash
+# Authentication
+PRIVATE_BETTER_AUTH_SECRET=your_super_secret_auth_key_here
+PUBLIC_BETTER_AUTH_URL=https://seu-dominio.com  # Use HTTPS and your actual domain (no port needed, port 80/443 is default)
+
+# Google OAuth - Update these in Google Cloud Console
+# Add your production callback URL:
+# https://seu-dominio.com/api/auth/callback/google
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+```
+
+**Important Notes:**
+- **PUBLIC_BETTER_AUTH_URL**: Use your production domain with `https://` (or `http://` if SSL is not available). Do NOT include a port number since port 80 (HTTP) and 443 (HTTPS) are the default ports.
+  - ✅ Correct: `https://rugplay.com` or `http://rugplay.com`
+  - ❌ Wrong: `https://rugplay.com:80` or `http://localhost:3002`
+
+- **Google OAuth Configuration**: Make sure to add your production callback URL in the [Google Cloud Console](https://console.cloud.google.com/auth/clients):
+  - `https://seu-dominio.com/api/auth/callback/google` (or `http://` if not using SSL)
+
+- **Port Configuration**: Most PaaS platforms automatically handle port 80/443, so you don't need to specify it in the URL.
+
+#### Quick Setup Script
+
+Use the setup script to configure everything:
+
+```bash
+npm run setup
+```
+
+This will:
+1. Install all dependencies
+2. Sync SvelteKit
+3. Push database schema
+4. Run migrations
+5. Build the application
+
+Then start the application:
+
+```bash
+npm run start
+```
+
 ## Project Structure
 
 - `src/routes/`: Page components and API endpoints

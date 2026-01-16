@@ -1,10 +1,18 @@
-<img style="width: 128px; height: 128px" src="website/static/favicon.svg" /><h1 style="font-size: 48px"><a href="https://rugplay.com">Rugplay.com</a> - the fake crypto simulator.</h1>
+<img style="width: 128px; height: 128px" src="website/static/favicon.svg" /><h1 style="font-size: 48px">RugPlay LanHouse - the fake crypto simulator for the Lan House community.</h1>
 
-[Privacy Policy](https://rugplay.com/legal/privacy) | [Terms of Service](https://rugplay.com/legal/terms) | [License](LICENSE) | [YouTube video](https://www.youtube.com/watch?v=nRUkvPMphRc)
+[Lan House Discord](https://lanhouse.squareweb.app/) | [Original RugPlay](https://github.com/outpoot/rugplay) | [License](LICENSE)
 
 ## About
 
-Rugplay is a realistic cryptocurrency trading simulator that lets you experience the risks and mechanics of decentralized exchanges without real financial consequences. Create coins, trade with liquidity pools, and learn about "rug pulls" in a... relatively safe environment :)
+**RugPlay LanHouse** is a fork of [RugPlay](https://github.com/outpoot/rugplay) dedicated and themed for the [Lan House](https://lanhouse.squareweb.app/) community.
+
+RugPlay is a realistic cryptocurrency trading simulator that lets you experience the risks and mechanics of decentralized exchanges without real financial consequences. Create coins, trade with liquidity pools, and learn about "rug pulls" in a... relatively safe environment :)
+
+## ⚠️ Experimental: AI Code Audit
+
+This fork includes an **experimental aspect**: while the original RugPlay has secure, well-audited code, we are intentionally using majority AI-generated code that *feels* "clean" — until it becomes insecure.
+
+**The goal?** To demonstrate why AI-generated code without proper auditing is dangerous. This serves as an educational example of the risks involved in blindly trusting AI-written code in production environments.
 
 ## Features
 - 🪙 Create coins
@@ -14,6 +22,7 @@ Rugplay is a realistic cryptocurrency trading simulator that lets you experience
 - 🎲 Gamble it all
 - 📊 View a Treemap graph of the entire market
 - 🏆 Compete on leaderboards
+- 🏠 Themed for the Lan House community
 
 ![Preview 2](github_assets/preview2.png)
 ![Preview](github_assets/preview.png)

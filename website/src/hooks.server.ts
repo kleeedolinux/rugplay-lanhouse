@@ -102,91 +102,107 @@ export const handle: Handle = async ({ event, resolve }) => {
         return new Response(null, { status: 204 });
     }
 
-    // Get session from auth
-    const session = await auth.api.getSession({
-        headers: event.request.headers
-    });
-
-    let userData = null;
-
-    if (session?.user) {
-        const userId = session.user.id;
-        const cacheKey = `user:${userId}`;
-        const now = Date.now();
-        
-        const cached = sessionCache.get(cacheKey);
-        if (cached && (now - cached.timestamp) < cached.ttl) {
-            userData = cached.userData;
-        } else {
-            const [userRecord] = await db
-                .select({
-                    id: user.id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    isAdmin: user.isAdmin,
-                    image: user.image,
-                    isBanned: user.isBanned,
-                    banReason: user.banReason,
-                    baseCurrencyBalance: user.baseCurrencyBalance,
-                    bio: user.bio,
-                    volumeMaster: user.volumeMaster,
-                    volumeMuted: user.volumeMuted
-                })
-                .from(user)
-                .where(eq(user.id, Number(userId)))
-                .limit(1);
-
-            if (userRecord?.isBanned) {
-                try {
-                    await auth.api.signOut({
-                        headers: event.request.headers
-                    });
-                } catch (e) {
-                    console.error('Failed to sign out banned user:', e);
-                }
-
-                if (event.url.pathname !== '/banned') {
-                    const banReason = encodeURIComponent(userRecord.banReason || 'Account suspended');
-                    throw redirect(302, `/banned?reason=${banReason}`);
-                }
-            } else if (userRecord) {
-                userData = {
-                    id: userRecord.id.toString(),
-                    name: userRecord.name,
-                    username: userRecord.username,
-                    email: userRecord.email,
-                    isAdmin: userRecord.isAdmin || false,
-                    image: userRecord.image || '',
-                    isBanned: userRecord.isBanned || false,
-                    banReason: userRecord.banReason,
-                    avatarUrl: userRecord.image,
-                    baseCurrencyBalance: parseFloat(userRecord.baseCurrencyBalance || '0'),
-                    bio: userRecord.bio || '',
-                    volumeMaster: parseFloat(userRecord.volumeMaster || '0.7'),
-                    volumeMuted: userRecord.volumeMuted || false
-                };
-
-                const cacheTTL = userRecord.isAdmin ? CACHE_TTL * 2 : CACHE_TTL;
-                sessionCache.set(cacheKey, {
-                    userData,
-                    timestamp: now,
-                    ttl: cacheTTL
-                });
+    // Let better-auth handle auth routes - call svelteKitHandler ONCE for all routes
+    // It will internally handle /api/auth/* routes and pass through others
+    return svelteKitHandler({ 
+        event, 
+        resolve: async (event) => {
+            // Skip user session loading for auth routes (better-auth handles these)
+            if (event.url.pathname.startsWith('/api/auth')) {
+                return resolve(event);
             }
-        }
-    }
 
-    event.locals.userSession = userData;
+            // Get session from auth (only for non-auth routes)
+            const session = await auth.api.getSession({
+                headers: event.request.headers
+            });
 
-    if (event.url.pathname.startsWith('/api/') && !event.url.pathname.startsWith('/api/proxy/')) {
-        const response = await svelteKitHandler({ event, resolve, auth });
-        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+            let userData = null;
 
-        return response;
-    }
+            if (session?.user) {
+                const userId = session.user.id;
+                const cacheKey = `user:${userId}`;
+                const now = Date.now();
+                
+                const cached = sessionCache.get(cacheKey);
+                if (cached && (now - cached.timestamp) < cached.ttl) {
+                    userData = cached.userData;
+                } else {
+                    const [userRecord] = await db
+                        .select({
+                            id: user.id,
+                            name: user.name,
+                            username: user.username,
+                            email: user.email,
+                            isAdmin: user.isAdmin,
+                            image: user.image,
+                            isBanned: user.isBanned,
+                            banReason: user.banReason,
+                            baseCurrencyBalance: user.baseCurrencyBalance,
+                            bio: user.bio,
+                            volumeMaster: user.volumeMaster,
+                            volumeMuted: user.volumeMuted
+                        })
+                        .from(user)
+                        .where(eq(user.id, Number(userId)))
+                        .limit(1);
 
-    return svelteKitHandler({ event, resolve, auth });
+                    if (userRecord?.isBanned) {
+                        try {
+                            await auth.api.signOut({
+                                headers: event.request.headers
+                            });
+                        } catch (e) {
+                            console.error('Failed to sign out banned user:', e);
+                        }
+
+                        if (event.url.pathname !== '/banned') {
+                            const banReason = encodeURIComponent(userRecord.banReason || 'Account suspended');
+                            throw redirect(302, `/banned?reason=${banReason}`);
+                        }
+                    } else if (userRecord) {
+                        userData = {
+                            id: userRecord.id.toString(),
+                            name: userRecord.name,
+                            username: userRecord.username,
+                            email: userRecord.email,
+                            isAdmin: userRecord.isAdmin || false,
+                            image: userRecord.image || '',
+                            isBanned: userRecord.isBanned || false,
+                            banReason: userRecord.banReason,
+                            avatarUrl: userRecord.image,
+                            baseCurrencyBalance: parseFloat(userRecord.baseCurrencyBalance || '0'),
+                            bio: userRecord.bio || '',
+                            volumeMaster: parseFloat(userRecord.volumeMaster || '0.7'),
+                            volumeMuted: userRecord.volumeMuted || false
+                        };
+
+                        const cacheTTL = userRecord.isAdmin ? CACHE_TTL * 2 : CACHE_TTL;
+                        sessionCache.set(cacheKey, {
+                            userData,
+                            timestamp: now,
+                            ttl: cacheTTL
+                        });
+                    }
+                }
+            }
+
+            event.locals.userSession = userData;
+
+            const response = await resolve(event);
+            
+            // Add cache headers for API routes (except auth and proxy)
+            if (event.url.pathname.startsWith('/api/') && 
+                !event.url.pathname.startsWith('/api/auth/') && 
+                !event.url.pathname.startsWith('/api/proxy/')) {
+                response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+            }
+            
+            return response;
+        }, 
+        auth, 
+        building 
+    });
 };
 
 export function clearUserCache(userId: string) {

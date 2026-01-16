@@ -329,7 +329,7 @@ function connect(): void {
         isConnectedStore.set(true);
         clearReconnectTimer();
         subscribeToChannels();
-        
+
         USER_DATA.subscribe(user => {
             if (user?.id && isSocketConnected()) {
                 console.log('Setting user subscription for user:', user.id);
