@@ -4,7 +4,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import * as HoverCard from '$lib/components/ui/hover-card';
 	import { Activity, TrendingUp, TrendingDown, Clock } from 'lucide-svelte';
-	import { allTradesStore, isLoadingTrades, loadInitialTrades } from '$lib/stores/websocket';
+	import { allTradesStore, isLoadingTrades, loadInitialTrades, isConnectedStore } from '$lib/stores/websocket';
 	import { goto } from '$app/navigation';
 	import { formatQuantity, formatRelativeTime, formatValue, getPublicUrl } from '$lib/utils';
 	import CoinIcon from '$lib/components/self/CoinIcon.svelte';
@@ -27,7 +27,7 @@
 
 	onMount(() => {
 		loadInitialTrades("expanded");
-	})
+	});
 </script>
 
 <SEO 
@@ -43,11 +43,20 @@
 
 <div class="container mx-auto max-w-7xl p-6">
 	<header class="mb-8">
-		<div>
-			<h1 class="text-2xl font-bold sm:text-3xl">Live Trades</h1>
-			<p class="text-muted-foreground text-sm sm:text-base">
-				Real-time trading activity for all trades
-			</p>
+		<div class="flex items-center justify-between">
+			<div>
+				<h1 class="text-2xl font-bold sm:text-3xl">Live Trades</h1>
+				<p class="text-muted-foreground text-sm sm:text-base">
+					Real-time trading activity for all trades
+				</p>
+			</div>
+			<Badge variant={$isConnectedStore ? 'default' : 'destructive'} class="flex items-center gap-1.5">
+				<span class="relative flex h-2 w-2">
+					<span class={`absolute inline-flex h-full w-full rounded-full opacity-75 ${$isConnectedStore ? 'animate-ping bg-green-400' : 'bg-red-400'}`}></span>
+					<span class={`relative inline-flex h-2 w-2 rounded-full ${$isConnectedStore ? 'bg-green-500' : 'bg-red-500'}`}></span>
+				</span>
+				{$isConnectedStore ? 'Live' : 'Disconnected'}
+			</Badge>
 		</div>
 	</header>
 

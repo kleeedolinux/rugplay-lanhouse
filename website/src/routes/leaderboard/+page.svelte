@@ -26,6 +26,7 @@
 	import LeaderboardSearchSkeleton from '$lib/components/self/skeletons/LeaderboardSearchSkeleton.svelte';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import ProfileBadges from '$lib/components/self/ProfileBadges.svelte';
+	import { allTradesStore } from '$lib/stores/websocket';
 
 	let searchOffset = $state(0);
 	let searchQuery = $state('');
@@ -33,6 +34,20 @@
 	let searchQueryTimeout = $state<NodeJS.Timeout | null>(null);
 	let leaderboardData = $state<any>(null);
 	let loading = $state(true);
+	let lastTradeCount = $state(0);
+
+	// Auto-refresh leaderboard when new trades come in (debounced)
+	$effect(() => {
+		const currentTradeCount = $allTradesStore.length;
+		if (currentTradeCount > lastTradeCount && lastTradeCount > 0 && !searchQueryValue) {
+			const timeoutId = setTimeout(() => {
+				fetchLeaderboardData(searchOffset);
+			}, 3000);
+			lastTradeCount = currentTradeCount;
+			return () => clearTimeout(timeoutId);
+		}
+		lastTradeCount = currentTradeCount;
+	});
 
 	onMount(async () => {
 		const urlParams = new URLSearchParams(window.location.search);

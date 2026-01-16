@@ -8,7 +8,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Activity, ChartColumn, Maximize, Minimize } from 'lucide-svelte';
 	import { formatValue } from '$lib/utils';
-	import { allTradesStore } from '$lib/stores/websocket';
+	import { allTradesStore, priceUpdatesStore } from '$lib/stores/websocket';
 	import { Button } from '$lib/components/ui/button';
 	import SEO from '$lib/components/self/SEO.svelte';
 
@@ -112,6 +112,28 @@
 		}
 	});
 
+	// Update coins when price updates come in from websocket
+	$effect(() => {
+		const priceUpdates = $priceUpdatesStore;
+		if (Object.keys(priceUpdates).length > 0 && isLiveUpdatesEnabled && coins.length > 0) {
+			coins = coins.map((coin) => {
+				const update = priceUpdates[coin.symbol];
+				if (update) {
+					return {
+						...coin,
+						currentPrice: update.currentPrice,
+						marketCap: update.marketCap,
+						priceChange24h: update.change24h,
+						volume24h: update.volume24h
+					};
+				}
+				return coin;
+			});
+			lastUpdated = new Date();
+		}
+	});
+
+	// Refetch coins data when new trades come in
 	$effect(() => {
 		if ($allTradesStore.length > 0 && isLiveUpdatesEnabled) {
 			const timeoutId = setTimeout(() => {

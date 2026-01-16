@@ -7,6 +7,7 @@ async function getLeaderboardData() {
     try {
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
+        // Top Rugpullers: Users who sold the most in 24h (absolute sell volume)
         const topRugpullers = await db
             .select({
                 userId: user.id,
@@ -18,11 +19,15 @@ async function getLeaderboardData() {
             })
             .from(transaction)
             .innerJoin(user, eq(transaction.userId, user.id))
-            .where(gte(transaction.timestamp, twentyFourHoursAgo))
+            .where(and(
+                gte(transaction.timestamp, twentyFourHoursAgo),
+                sql`${transaction.type} IN ('BUY', 'SELL')`
+            ))
             .groupBy(user.id, user.username, user.name, user.image)
-            .orderBy(desc(sql`SUM(CASE WHEN ${transaction.type} = 'SELL' THEN CAST(${transaction.totalBaseCurrencyAmount} AS NUMERIC) ELSE 0 END) - SUM(CASE WHEN ${transaction.type} = 'BUY' THEN CAST(${transaction.totalBaseCurrencyAmount} AS NUMERIC) ELSE 0 END)`))
+            .orderBy(desc(sql`SUM(CASE WHEN ${transaction.type} = 'SELL' THEN CAST(${transaction.totalBaseCurrencyAmount} AS NUMERIC) ELSE 0 END)`))
             .limit(10);
 
+        // Get all BUY/SELL transactions from last 24h for loss calculation
         const userTransactions = await db
             .select({
                 userId: user.id,
@@ -36,7 +41,10 @@ async function getLeaderboardData() {
             })
             .from(transaction)
             .innerJoin(user, eq(transaction.userId, user.id))
-            .where(gte(transaction.timestamp, twentyFourHoursAgo));
+            .where(and(
+                gte(transaction.timestamp, twentyFourHoursAgo),
+                sql`${transaction.type} IN ('BUY', 'SELL')`
+            ));
 
         const userNetCalculations = new Map();
         for (const tx of userTransactions) {
@@ -57,7 +65,7 @@ async function getLeaderboardData() {
                 userData.totalBought += Number(tx.totalAmount);
                 const currentHolding = userData.coinHoldings.get(tx.coinId) || 0;
                 userData.coinHoldings.set(tx.coinId, currentHolding + Number(tx.quantity));
-            } else {
+            } else if (tx.type === 'SELL') {
                 userData.totalSold += Number(tx.totalAmount);
                 const currentHolding = userData.coinHoldings.get(tx.coinId) || 0;
                 userData.coinHoldings.set(tx.coinId, currentHolding - Number(tx.quantity));
@@ -65,18 +73,20 @@ async function getLeaderboardData() {
         }
 
         // Collect all unique coin IDs
-        const uniqueCoinIds = new Set();
+        const uniqueCoinIds = new Set<number>();
         for (const userData of userNetCalculations.values()) {
             for (const [coinId] of userData.coinHoldings.entries()) {
                 uniqueCoinIds.add(coinId);
             }
-        }        // Batch fetch all coin prices
+        }
+
+        // Batch fetch all coin prices
         const coinPrices = new Map();
         if (uniqueCoinIds.size > 0) {
             const coinPricesData = await db
                 .select({ id: coin.id, currentPrice: coin.currentPrice })
                 .from(coin)
-                .where(inArray(coin.id, Array.from(uniqueCoinIds) as number[]));
+                .where(inArray(coin.id, Array.from(uniqueCoinIds)));
 
             for (const coinData of coinPricesData) {
                 coinPrices.set(coinData.id, Number(coinData.currentPrice || 0));
@@ -94,6 +104,7 @@ async function getLeaderboardData() {
                 }
             }
 
+            // Net loss = money spent - money received - current value of holdings bought in 24h
             const netLoss = userData.totalBought - userData.totalSold - currentHoldingsValue;
             if (netLoss > 0) {
                 biggestLosersData.push({
@@ -155,8 +166,9 @@ async function getLeaderboardData() {
             };
         };
 
+        // Show top sellers by total sell volume (rugpullers = people who sold the most)
         const processedRugpullers = topRugpullers
-            .map(user => ({ ...user, totalExtracted: Number(user.totalSold) - Number(user.totalBought) }))
+            .map(user => ({ ...user, totalExtracted: Number(user.totalSold) }))
             .filter(user => user.totalExtracted > 0);
 
         const aggregatedLosers = biggestLosersData
