@@ -2,6 +2,8 @@
 
 [Lan House Discord](https://lanhouse.squareweb.app/) | [Original RugPlay](https://github.com/outpoot/rugplay) | [License](LICENSE)
 
+> **Note:** This is not an official project of Lan House brandmark, but a community-driven project.
+
 ## About
 
 **RugPlay LanHouse** is a fork of [RugPlay](https://github.com/outpoot/rugplay) dedicated and themed for the [Lan House](https://lanhouse.squareweb.app/) community.

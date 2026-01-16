@@ -1,6 +1,5 @@
 # Rugplay Website
 
-> **Note:** This is not an official project of Lan House brandmark, but a community-driven project.
 
 This is the main website component of Rugplay, built with SvelteKit. It handles the user interface, trading functionality, and market visualization.
 
