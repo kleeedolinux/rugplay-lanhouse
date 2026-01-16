@@ -1,12 +1,11 @@
 import { auth } from '$lib/auth';
 import { error, json } from '@sveltejs/kit';
-import { calculateMultiplier, getSessionKey } from '$lib/server/games/mines';
+import { calculateMultiplier, getSessionKey, storeEndedGamePositions } from '$lib/server/games/mines';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { redis } from '$lib/server/redis';
 import { publishGamblingActivity } from '$lib/server/gambling-activity';
-import { storeEndedGamePositions } from '../pos/+server';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request }) => {

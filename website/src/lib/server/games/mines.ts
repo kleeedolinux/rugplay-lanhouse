@@ -20,6 +20,25 @@ interface MinesSession {
 const MINES_SESSION_PREFIX = 'mines:session:';
 export const getSessionKey = (token: string) => `${MINES_SESSION_PREFIX}${token}`;
 
+// Prefix for ended game positions (stored temporarily after game ends)
+const ENDED_GAME_PREFIX = 'mines:ended:';
+export const getEndedGameKey = (token: string) => `${ENDED_GAME_PREFIX}${token}`;
+
+// Store ended game positions (called from reveal/cashout endpoints)
+export async function storeEndedGamePositions(
+    sessionToken: string,
+    minePositions: number[],
+    userId: number,
+    result: 'won' | 'lost' | 'cashout'
+): Promise<void> {
+    const key = getEndedGameKey(sessionToken);
+    await redis.set(
+        key,
+        JSON.stringify({ minePositions, userId, result, endedAt: Date.now() }),
+        { EX: 300 } // Store for 5 minutes after game ends
+    );
+}
+
 // --- Mines cleanup logic for scheduler ---
 export async function minesCleanupInactiveGames() {
     const now = Date.now();

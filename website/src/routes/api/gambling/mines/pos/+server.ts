@@ -1,26 +1,7 @@
 import { auth } from '$lib/auth';
 import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { redis } from '$lib/server/redis';
-import { getSessionKey } from '$lib/server/games/mines';
-
-// Prefix for ended game positions (stored temporarily after game ends)
-const ENDED_GAME_PREFIX = 'mines:ended:';
-const getEndedGameKey = (token: string) => `${ENDED_GAME_PREFIX}${token}`;
-
-// Store ended game positions (called from reveal/cashout endpoints)
-export async function storeEndedGamePositions(
-    sessionToken: string,
-    minePositions: number[],
-    userId: number,
-    result: 'won' | 'lost' | 'cashout'
-): Promise<void> {
-    const key = getEndedGameKey(sessionToken);
-    await redis.set(
-        key,
-        JSON.stringify({ minePositions, userId, result, endedAt: Date.now() }),
-        { EX: 300 } // Store for 5 minutes after game ends
-    );
-}
+import { getSessionKey, getEndedGameKey } from '$lib/server/games/mines';
 
 export const POST: RequestHandler = async ({ request }) => {
     const session = await auth.api.getSession({
