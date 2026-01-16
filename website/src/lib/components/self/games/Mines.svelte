@@ -18,6 +18,8 @@
 	import { fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 	import { calculateMinesMultiplier } from '$lib/utils';
 
+	const CACHE_VERSION = '2';
+
 	const GRID_SIZE = 5;
 	const TOTAL_TILES = GRID_SIZE * GRID_SIZE;
 	const MAX_BET_AMOUNT = 1000000;
@@ -305,9 +307,9 @@
 						>
 							{#if isRevealed}
 								{#if isMine}
-									<img src="/facedev/avif/bussin.avif" alt="Mine" class="tile-icon" />
+									<img src={`/facedev/avif/bussin.avif?v=${CACHE_VERSION}`} alt="Mine" class="tile-icon" />
 								{:else}
-									<img src="/facedev/avif/twoblade.avif" alt="Safe" class="tile-icon" />
+									<img src={`/facedev/avif/twoblade.avif?v=${CACHE_VERSION}`} alt="Safe" class="tile-icon" />
 								{/if}
 							{/if}
 						</button>

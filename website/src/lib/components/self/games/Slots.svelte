@@ -15,6 +15,8 @@
 	import { onMount } from 'svelte';
 	import { fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 
+	const CACHE_VERSION = '2';
+
 	interface SlotsResult {
 		won: boolean;
 		symbols: string[];
@@ -259,7 +261,7 @@
 									{#each Array(NUM_RENDERED_CYCLES) as _, cycleInstanceIndex}
 										{#each logicalCycleData as symbol, symbolIndexInCycle}
 											<div class="symbol">
-												<img src="/facedev/avif/{symbol}.avif" alt={symbol} class="symbol-image" />
+												<img src={`/facedev/avif/${symbol}.avif?v=${CACHE_VERSION}`} alt={symbol} class="symbol-image" />
 											</div>
 										{/each}
 									{/each}

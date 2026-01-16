@@ -166,6 +166,8 @@
 	import { onMount } from 'svelte';
 	import { fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 
+	const CACHE_VERSION = '2';
+
 	interface CoinflipResult {
 		won: boolean;
 		result: 'heads' | 'tails';
@@ -352,14 +354,14 @@
 						<div class="coin" style="transform: rotateY({coinRotation}deg)">
 							<div class="coin-face coin-heads">
 								<img
-									src="/facedev/avif/bliptext.avif"
+									src={`/facedev/avif/bliptext.avif?v=${CACHE_VERSION}`}
 									alt="Heads"
 									class="h-32 w-32 object-contain"
 								/>
 							</div>
 							<div class="coin-face coin-tails">
 								<img
-									src="/facedev/avif/wattesigma.avif"
+									src={`/facedev/avif/wattesigma.avif?v=${CACHE_VERSION}`}
 									alt="Tails"
 									class="h-32 w-32 object-contain"
 								/>
@@ -402,7 +404,7 @@
 						>
 							<div class="text-center">
 								<img
-									src="/facedev/avif/bliptext.avif"
+									src={`/facedev/avif/bliptext.avif?v=${CACHE_VERSION}`}
 									alt="Heads"
 									class="mx-auto mb-1 h-8 w-8 object-contain"
 								/>
@@ -417,7 +419,7 @@
 						>
 							<div class="text-center">
 								<img
-									src="/facedev/avif/wattesigma.avif"
+									src={`/facedev/avif/wattesigma.avif?v=${CACHE_VERSION}`}
 									alt="Tails"
 									class="mx-auto mb-1 h-8 w-8 object-contain"
 								/>
