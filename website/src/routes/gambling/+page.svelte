@@ -3,6 +3,8 @@
 	import Slots from '$lib/components/self/games/Slots.svelte';
 	import Mines from '$lib/components/self/games/Mines.svelte';
 	import Cartela from '$lib/components/self/games/Cartela.svelte';
+	import Rocket from '$lib/components/self/games/Rocket.svelte';
+	import Roulette from '$lib/components/self/games/Roulette.svelte';
 	import { USER_DATA } from '$lib/stores/user-data';
 	import { PORTFOLIO_SUMMARY, fetchPortfolioSummary } from '$lib/stores/portfolio-data';
 	import { onMount } from 'svelte';
@@ -54,8 +56,8 @@
 
 <SEO 
 	title="Gambling - Rugplay"
-	description="Play virtual gambling games with simulated currency in Rugplay. Try coinflip, slots, and mines games using virtual money with no real-world value - purely for entertainment."
-	keywords="virtual gambling simulation, coinflip game, slots game, mines game, virtual casino, simulated gambling, entertainment games"
+	description="Play virtual gambling games with simulated currency in Rugplay. Try coinflip, slots, mines, rocket, and other games using virtual money with no real-world value - purely for entertainment."
+	keywords="virtual gambling simulation, coinflip game, slots game, mines game, rocket game, crash game, virtual casino, simulated gambling, entertainment games"
 />
 
 <SignInConfirmDialog bind:open={shouldSignIn} />
@@ -105,6 +107,18 @@
 				>
 					Cartela
 				</Button>
+				<Button
+					variant={activeGame === 'rocket' ? 'default' : 'outline'}
+					onclick={() => (activeGame = 'rocket')}
+				>
+					Rocket
+				</Button>
+				<Button
+					variant={activeGame === 'roulette' ? 'default' : 'outline'}
+					onclick={() => (activeGame = 'roulette')}
+				>
+					Roulette
+				</Button>
 			</div>
 
 			<!-- Game Content -->
@@ -118,6 +132,10 @@
 				<Dice bind:balance onBalanceUpdate={handleBalanceUpdate} />
 			{:else if activeGame === 'cartela'}
 				<Cartela bind:balance onBalanceUpdate={handleBalanceUpdate} />
+			{:else if activeGame === 'rocket'}
+				<Rocket bind:balance onBalanceUpdate={handleBalanceUpdate} />
+			{:else if activeGame === 'roulette'}
+				<Roulette bind:balance onBalanceUpdate={handleBalanceUpdate} />
 			{/if}
 
 			<!-- Live Gambling Activity Feed -->

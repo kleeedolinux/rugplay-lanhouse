@@ -1,44 +1,12 @@
 import { auth } from '$lib/auth';
-import { error, json } from '@sveltejs/kit';
+import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { db } from '$lib/server/db';
 import { user } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { redis } from '$lib/server/redis';
-import { getSessionKey } from '$lib/server/games/mines';
+import { getSessionKey, generateCrashPoint } from '$lib/server/games/rocket';
 import { validateBetAmount } from '$lib/utils';
 import { randomBytes } from 'crypto';
-import type { RequestHandler } from './$types';
-
-// Unbiased random integer in range [0, max) using rejection sampling
-// Follows NIST SP 800-90A and ISO/IEC 18031 recommendations
-function secureRandomInt(max: number): number {
-    if (max <= 0 || max > 256) throw new Error('Invalid range');
-    
-    // Calculate the largest multiple of max that fits in a byte
-    // to eliminate modulo bias
-    const limit = 256 - (256 % max);
-    
-    let value: number;
-    do {
-        value = randomBytes(1)[0];
-    } while (value >= limit); // Reject biased values
-    
-    return value % max;
-}
-
-// Fisher-Yates shuffle with cryptographically secure unbiased randomness
-// Each swap uses rejection sampling to ensure uniform distribution
-function generateMinePositions(mineCount: number): number[] {
-    const tiles = Array.from({ length: 25 }, (_, i) => i);
-    
-    // Fisher-Yates shuffle with unbiased random selection
-    for (let i = tiles.length - 1; i > 0; i--) {
-        const j = secureRandomInt(i + 1);
-        [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
-    }
-    
-    return tiles.slice(0, mineCount);
-}
 
 export const POST: RequestHandler = async ({ request }) => {
     const session = await auth.api.getSession({
@@ -50,11 +18,21 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     try {
-        const { betAmount, mineCount } = await request.json();
+        const { betAmount } = await request.json();
         const userId = Number(session.user.id);
 
-        if (!mineCount || mineCount < 3 || mineCount > 24) {
-            return json({ error: 'Invalid mine count' }, { status: 400 });
+        // Validate bet amount on backend
+        if (typeof betAmount !== 'number' || isNaN(betAmount) || !isFinite(betAmount)) {
+            return json({ error: 'Invalid bet amount' }, { status: 400 });
+        }
+
+        if (betAmount <= 0) {
+            return json({ error: 'Bet amount must be greater than 0' }, { status: 400 });
+        }
+
+        const MAX_BET = 1000000;
+        if (betAmount > MAX_BET) {
+            return json({ error: `Maximum bet amount is ${MAX_BET.toLocaleString()}` }, { status: 400 });
         }
 
         const roundedBet = validateBetAmount(betAmount);
@@ -74,8 +52,8 @@ export const POST: RequestHandler = async ({ request }) => {
                 throw new Error(`Insufficient funds. You need $${roundedBet.toFixed(2)} but only have $${roundedBalance.toFixed(2)}`);
             }
 
-            // Generate mine positions with crypto randomness
-            const minePositions = generateMinePositions(mineCount);
+            // Generate crash point with cryptographically secure randomness
+            const crashPoint = generateCrashPoint(0.01); // 1% house edge
 
             // Generate session token with crypto
             const sessionToken = randomBytes(16).toString('hex');
@@ -86,12 +64,10 @@ export const POST: RequestHandler = async ({ request }) => {
             await redis.set(
                 getSessionKey(sessionToken),
                 JSON.stringify({
+                    sessionToken,
                     betAmount: roundedBet,
-                    mineCount,
-                    minePositions,
-                    revealedTiles: [],
+                    crashPoint,
                     startTime: now,
-                    currentMultiplier: 1,
                     status: 'active',
                     userId
                 }),
@@ -107,12 +83,16 @@ export const POST: RequestHandler = async ({ request }) => {
                 })
                 .where(eq(user.id, userId));
 
-            return { sessionToken, newBalance };
+            return { sessionToken, newBalance, crashPoint };
         });
 
-        return json(result);
+        return json({
+            sessionToken: result.sessionToken,
+            newBalance: result.newBalance
+            // Don't send crashPoint to client - it's secret!
+        });
     } catch (e) {
-        console.error('Mines start error:', e);
+        console.error('Rocket start error:', e);
         const errorMessage = e instanceof Error ? e.message : 'Internal server error';
         return json({ error: errorMessage }, { status: 400 });
     }

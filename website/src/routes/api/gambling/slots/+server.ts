@@ -8,9 +8,23 @@ import { publishGamblingActivity } from '$lib/server/gambling-activity';
 import { validateBetAmount } from '$lib/utils';
 import type { RequestHandler } from './$types';
 
+// Unbiased random integer in range [0, max) using rejection sampling
+// Follows NIST SP 800-90A and ISO/IEC 18031 recommendations
+function secureRandomInt(max: number): number {
+    if (max <= 0 || max > 256) throw new Error('Invalid range');
+    
+    const limit = 256 - (256 % max);
+    
+    let value: number;
+    do {
+        value = randomBytes(1)[0];
+    } while (value >= limit);
+    
+    return value % max;
+}
+
 function getRandomSymbol(symbols: string[]): string {
-    const randomValue = randomBytes(1)[0];
-    const index = Math.floor((randomValue / 256) * symbols.length);
+    const index = secureRandomInt(symbols.length);
     return symbols[index];
 }
 
