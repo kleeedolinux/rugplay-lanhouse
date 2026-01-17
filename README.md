@@ -1,7 +1,7 @@
 <img style="width: 128px; height: 128px" src="website/static/favicon.svg" /><h1 style="font-size: 48px">RugPlay LanHouse - the fake crypto simulator for the Lan House community.</h1>
 
 [Lan House Discord](https://lanhouse.squareweb.app/) | [Original RugPlay](https://github.com/outpoot/rugplay) | [License](LICENSE)
-
+Bruh
 > **Note:** This is not an official project of Lan House brandmark, but a community-driven project.
 
 ## About
